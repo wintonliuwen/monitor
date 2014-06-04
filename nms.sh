@@ -1,5 +1,9 @@
 #!/bin/bash
 
+server=""
+
+DEPENDS="hdparm lsb_release df iostat netstat ifstat"
+
 uuid=""
 cpumodel=""
 cpunum=""
@@ -21,6 +25,31 @@ hostname=""
 ethname=""
 ipaddr=""
 macaddr=""
+
+
+
+usage()
+{
+	echo "Usage: nms <server>"
+	exit 0;
+}
+
+checktools()
+{
+	local i=0
+	for tool in ${DEPENDS}
+	do
+		path=$(which ${tool})
+		if [ -z "$path" ];then
+			echo "Please install the tool ${tool}"
+			let "i+=1"
+		fi
+	done
+
+	if [ "$i" -gt 0 ];then
+		exit 0
+	fi
+}
 
 getcpuinfo(){
 	cpumodel=$(cat /proc/cpuinfo | grep 'model name' | head -1 | awk -F':' '{print $2}' | awk -F'@' '{print $1}')
@@ -256,4 +285,22 @@ dynamicjson(){
 	echo "}"
 }
 
-dynamicjson
+
+if [ $# -ne 1 ];then
+	usage
+else
+	serverip=$1
+fi
+
+checktools
+
+staticjson=$(staticjson)
+curl  -X POST -H 'Content-Type:application/json' -d "${staticjson}" http://${serverip}:8080/nms/poststatics
+
+while true
+do
+dyjson=$(dynamicjson)
+curl  -X POST -H 'Content-Type:application/json'  -d "${dyjson}"  http://${serverip}:8080/nms/postdrynamic
+sleep 60
+done
+
