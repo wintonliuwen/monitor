@@ -1,5 +1,6 @@
 #!/bin/bash
 
+NMSVERSION="V1.0"
 server=""
 
 DEPENDS="hdparm lsb_release df iostat netstat ifstat"
@@ -26,10 +27,9 @@ ethname=""
 ipaddr=""
 macaddr=""
 
-
-
 usage()
 {
+	echo "nms ${NMSVERSION}"
 	echo "Usage: nms <server>"
 	exit 0;
 }
@@ -39,7 +39,7 @@ checktools()
 	local i=0
 	for tool in ${DEPENDS}
 	do
-		path=$(which ${tool})
+		path=$(which ${tool} 2>/dev/null)
 		if [ -z "$path" ];then
 			echo "Please install the tool ${tool}"
 			let "i+=1"
@@ -68,12 +68,24 @@ getmeminfo(){
 getdiskinfo(){
 	local diskname=$(ls /dev | grep sd | head -1)
 	local diskdevice="/dev/${diskname}"
-	local diskbufkb=$(hdparm -I ${diskdevice} | grep "cache\/buffer" | awk '{print $4}')
-	disksn=$(hdparm -I ${diskdevice} | grep "Serial Number" | awk '{print $3}')
-	diskmodel=$(hdparm -I ${diskdevice} | grep "Model Number" | awk -F":" '{print $2}')
-	disksize=$(hdparm -I ${diskdevice} | grep "1000\*1000" | awk -F"(" '{print $2}' | awk '{print $1}')
-	diskspeed=$(hdparm -I ${diskdevice} | grep "Rotation Rate" | awk -F":" '{print $2}')
+	local diskbufkb=$(hdparm -I ${diskdevice}  2>/dev/null | grep "cache\/buffer" | awk '{print $4}')
+	disksn=$(hdparm -I ${diskdevice} 2>/dev/null | grep "Serial Number" | awk '{print $3}')
+	if [ -z "$disksn" ];then
+		disksn=$(smartctl -a ${diskdevice} | grep -i "Serial number" | awk '{print $3}')
+	fi
+	diskmodel=$(hdparm -I ${diskdevice}  2>/dev/null | grep "Model Number" | awk -F":" '{print $2}')
+	disksize=$(hdparm -I ${diskdevice} 2>/dev/null | grep "1000\*1000" | awk -F"(" '{print $2}' | awk '{print $1}')
+	if [ -z "$disksize" ];then
+		disksize=$(fdisk -l | grep "Disk /dev/sd" | awk '{print $3}' | awk -F    '.' '{print $1}')
+	fi
+	diskspeed=$(hdparm -I ${diskdevice} 2>/dev/null | grep "Rotation Rate" | awk -F":" '{print $2}')
+	if [ -z "$diskspeed" ];then
+		diskspeed=0
+	fi
 	diskbuffer=$((diskbufkb/1024))
+	if [ -z "$diskbuffer" ];then
+		diskbuffer=0
+	fi
 }
 
 getosinfo(){
@@ -295,12 +307,12 @@ fi
 checktools
 
 staticjson=$(staticjson)
-curl  -X POST -H 'Content-Type:application/json' -d "${staticjson}" http://${serverip}:8080/nms/poststatics
+curl  -X POST -H 'Content-Type:application/json' -d "${staticjson}" http://${serverip}:20180/nms/poststatics
 
 while true
 do
 dyjson=$(dynamicjson)
-curl  -X POST -H 'Content-Type:application/json'  -d "${dyjson}"  http://${serverip}:8080/nms/postdrynamic
+curl  -X POST -H 'Content-Type:application/json'  -d "${dyjson}"  http://${serverip}:20180/nms/postdrynamic
 sleep 60
 done
 
