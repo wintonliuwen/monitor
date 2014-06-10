@@ -1,0 +1,13 @@
+Nms script Intruction
+
+
+Install:
+tar -xvf nms.1.0.tar.gz .
+./install
+
+Usage:
+nms <serverip>
+
+Attention:
+nms should run as root,and the following tools should be installed:
+hdparm, lsb_release, df, iostat, netstat, ifstat

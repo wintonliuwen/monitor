@@ -1,0 +1,5 @@
+#!/bin/bash
+
+INSTALLPATH="/usr/bin"
+
+cp ./nms ${INSTALLPATH}
