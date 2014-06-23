@@ -1,9 +1,9 @@
 #!/bin/bash
 
-NMSVERSION="V1.0"
+NMSVERSION="V1.1"
 server=""
 
-DEPENDS="hdparm lsb_release df iostat netstat ifstat"
+DEPENDS="hdparm df iostat netstat ifstat"
 
 uuid=""
 cpumodel=""
@@ -55,6 +55,11 @@ getcpuinfo(){
 	cpumodel=$(cat /proc/cpuinfo | grep 'model name' | head -1 | awk -F':' '{print $2}' | awk -F'@' '{print $1}')
 	cpunum=$(cat /proc/cpuinfo | grep processor | wc -l)
 	cpufreq=$(cat /proc/cpuinfo | grep 'model name' | head -1 | awk -F':' '{print $2}' | awk -F'@' '{print $2}' | sed -e 's/GHz//g')
+	if [ -z "$cpufreq" ];then
+		cpuMhz=$(cat /proc/cpuinfo  | grep 'cpu MHz' | head -1 | awk -F':' '{print $2}' | sed 's/\..*//g')
+		HundredMhz=$((($cpuMhz+99)/100))
+		cpufreq=$(echo "${HundredMhz}*0.1" | bc)
+	fi
 	cpucache=$(cat /proc/cpuinfo  | grep "cache size" | head -1 | awk -F':' '{print $2}' | sed -e 's/KB//g')
 }
 
@@ -66,7 +71,7 @@ getmeminfo(){
 }
 
 getdiskinfo(){
-	local diskname=$(ls /dev | grep sd | head -1)
+	local diskname=$(ls /dev | grep -E 'sd|^vd' | head -1)
 	local diskdevice="/dev/${diskname}"
 	local diskbufkb=$(hdparm -I ${diskdevice}  2>/dev/null | grep "cache\/buffer" | awk '{print $4}')
 	disksn=$(hdparm -I ${diskdevice} 2>/dev/null | grep "Serial Number" | awk '{print $3}')
@@ -76,7 +81,7 @@ getdiskinfo(){
 	diskmodel=$(hdparm -I ${diskdevice}  2>/dev/null | grep "Model Number" | awk -F":" '{print $2}')
 	disksize=$(hdparm -I ${diskdevice} 2>/dev/null | grep "1000\*1000" | awk -F"(" '{print $2}' | awk '{print $1}')
 	if [ -z "$disksize" ];then
-		disksize=$(fdisk -l | grep "Disk /dev/sd" | awk '{print $3}' | awk -F    '.' '{print $1}')
+		disksize=$(fdisk -l | grep "Disk /dev/${diskname}" | awk '{print $3}' | awk -F    '.' '{print $1}')
 	fi
 	diskspeed=$(hdparm -I ${diskdevice} 2>/dev/null | grep "Rotation Rate" | awk -F":" '{print $2}')
 	if [ -z "$diskspeed" ];then
@@ -89,13 +94,16 @@ getdiskinfo(){
 }
 
 getosinfo(){
-	osver=$(lsb_release -d | awk -F":" '{print $2}' | sed 's/\t//g')
+	osver=$(head -1 /etc/issue)
 	oskernel=$(uname -r | awk -F'-' '{print $1}')
 	hostname=$(hostname)
 }
 
 getnetwork(){
 	ethname=$(route -n | grep "^0.0.0.0" | head -1 | awk -F" " '{print $8}')
+	if [ -z "$ethname" ];then
+		ethname=$(route -n | grep '0.0.0.0' | head -1 | awk -F" " '{print $8}')
+	fi
 	ipaddr=$(ifconfig ${ethname} | sed -n 2p | awk '{print $2}' | tr -d 'addr:')
 	macaddr=$(ifconfig ${ethname}  | sed -n 1p | awk '{print $5}')
 }
@@ -155,13 +163,13 @@ getrtmem(){
 }
 
 getrtdisk(){
-	local partnum=$(df -m | grep "^\/dev" | wc -l)
+	local partnum=$(df -mP | grep "^\/dev" | wc -l)
 	echo "\"diskusage\":["
 	for((i=1; i<=$partnum; i++))
 	do
-		mountpoint=$(df -m | grep "^\/dev/" | sed -n ${i}p | awk '{print $6}')
-		used=$(df -m | grep "^\/dev/" | sed -n ${i}p | awk '{print $3}')
-		freesize=$(df -m | grep "^\/dev/" | sed -n ${i}p | awk '{print $4}')
+		mountpoint=$(df -mP | grep "^\/dev/" | sed -n ${i}p | awk '{print $6}')
+		used=$(df -mP | grep "^\/dev/" | sed -n ${i}p | awk '{print $3}')
+		freesize=$(df -mP | grep "^\/dev/" | sed -n ${i}p | awk '{print $4}')
 		echo "{"
 		echo "\"mountpoint\":\"${mountpoint}\","
 		echo "\"used\":${used},"
@@ -172,8 +180,8 @@ getrtdisk(){
 		fi
 	done
 	echo "],"
-	readspeed=$(iostat  | grep sda | awk '{print $3}')
-	writespeed=$(iostat  | grep sda | awk '{print $4}')
+	readspeed=$(iostat  | grep -E 'sda|vda' | awk '{print $3}')
+	writespeed=$(iostat  | grep -E 'sda|vda' | awk '{print $4}')
 #	echo "readspeed:${readspeed}  writespeed:${writespeed}"
 }
 
@@ -310,11 +318,11 @@ dynamicjson(){
 }
 
 staticjson=$(staticjson)
-curl  -X POST -H 'Content-Type:application/json' -d "${staticjson}" http://${serverip}:20180/nms/poststatics
+curl  -X POST -H 'Content-Type:application/json' -d "${staticjson}" http://${serverip}:8080/nms/poststatics
 
 while true
 do
 dyjson=$(dynamicjson)
-curl  -X POST -H 'Content-Type:application/json'  -d "${dyjson}"  http://${serverip}:20180/nms/postdrynamic
+curl  -X POST -H 'Content-Type:application/json'  -d "${dyjson}"  http://${serverip}:8080/nms/postdrynamic
 sleep 60
 done
